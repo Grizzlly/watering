@@ -18,6 +18,13 @@ static const int pump_pin = 10;
 static const int pump_pwm_val = 200;
 static const int pump_dir_pin = 12;
 
+static const int flowSensorPin = 2;
+static volatile byte pulseCount = 0;
+static unsigned int oldPulseTimme = 0;
+// The hall-effect flow sensor outputs approximately 4.5 pulses per second per
+// litre/minute of flow.
+static const float calibrationFactor = 4.5;
+
 void setup()
 {
 	Serial.begin(9600);
@@ -25,6 +32,10 @@ void setup()
 	pinMode(pump_dir_pin, OUTPUT);
 	pinMode(buz_pin, OUTPUT);
 	pinMode(SOIL_PIN, INPUT);
+
+	pinMode(flowSensorPin, INPUT);
+	digitalWrite(flowSensorPin, HIGH);
+	attachInterrupt(digitalPinToInterrupt(flowSensorPin), flow, FALLING);
 
 	digitalWrite(pump_dir_pin, HIGH);
 }
@@ -41,6 +52,32 @@ void loop()
 		return;
 	}
 
+	if (pumpOn && millis() - oldPulseTimme > 1000)
+	{
+		detachInterrupt(digitalPinToInterrupt(flowSensorPin));
+
+		const float flowRate = ((1000.0 / (millis() - oldPulseTimme)) * pulseCount) / calibrationFactor;
+
+		oldPulseTimme = millis();
+		pulseCount = 0;
+
+		if (flowRate < 0.5)
+		{
+			// pump is not working
+			throwError();
+			return;
+		}
+		else
+		{
+			Serial.print("Flow rate: ");
+			Serial.print(int(flowRate));
+			Serial.print(" L/min");
+			Serial.println();
+		}
+
+		attachInterrupt(digitalPinToInterrupt(flowSensorPin), flow, FALLING);
+	}
+
 	if (waterValue >= AVG)
 	{
 		// Turn on the pump
@@ -50,12 +87,10 @@ void loop()
 		}
 		else if (millis() - pumpStartMilis > MAX_PUMP_TIME)
 		{
-			turnPumpOff();
-			canPump = false;
-
 			// for some reason the pump is not turning off
 			// need device reset
-			digitalWrite(buz_pin, HIGH);
+			throwError();
+			return;
 		}
 	}
 	else
@@ -82,4 +117,16 @@ void turnPumpOn()
 	pumpOn = true;
 	analogWrite(pump_pin, pump_pwm_val);
 	pumpStartMilis = millis();
+}
+
+void throwError()
+{
+	turnPumpOff();
+	canPump = false;
+	digitalWrite(buz_pin, HIGH);
+}
+
+void flow()
+{
+	pulseCount++;
 }
