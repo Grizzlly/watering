@@ -18,9 +18,9 @@ static const int pump_pin = 10;
 static const int pump_pwm_val = 200;
 static const int pump_dir_pin = 12;
 
-static const int flowSensorPin = 2;
+static const int flowSensorPin = 3;
 static volatile byte pulseCount = 0;
-static unsigned int oldPulseTimme = 0;
+static unsigned int oldPulseTime = 0;
 // The hall-effect flow sensor outputs approximately 4.5 pulses per second per
 // litre/minute of flow.
 static const float calibrationFactor = 4.5;
@@ -35,6 +35,7 @@ void setup()
 
 	pinMode(flowSensorPin, INPUT);
 	digitalWrite(flowSensorPin, HIGH);
+
 	attachInterrupt(digitalPinToInterrupt(flowSensorPin), flow, FALLING);
 
 	digitalWrite(pump_dir_pin, HIGH);
@@ -52,27 +53,25 @@ void loop()
 		return;
 	}
 
-	if (pumpOn && millis() - oldPulseTimme > 1000)
+	if (pumpOn && millis() - oldPulseTime > 1500)
 	{
 		detachInterrupt(digitalPinToInterrupt(flowSensorPin));
 
-		const float flowRate = ((1000.0 / (millis() - oldPulseTimme)) * pulseCount) / calibrationFactor;
+		float flowRate = ((1500.0 / (millis() - oldPulseTime)) * pulseCount) / calibrationFactor;
 
-		oldPulseTimme = millis();
+		oldPulseTime = millis();
 		pulseCount = 0;
 
-		if (flowRate < 0.5)
+		Serial.print("Flow rate: ");
+		Serial.print(flowRate);
+		Serial.print(" L/min");
+		Serial.println();
+
+		if (flowRate < 0.2)
 		{
 			// pump is not working
 			throwError();
 			return;
-		}
-		else
-		{
-			Serial.print("Flow rate: ");
-			Serial.print(int(flowRate));
-			Serial.print(" L/min");
-			Serial.println();
 		}
 
 		attachInterrupt(digitalPinToInterrupt(flowSensorPin), flow, FALLING);
